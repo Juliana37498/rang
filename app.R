@@ -5,13 +5,21 @@ library(zip)
 library(stringdist)
 library(stringi)
 library(words)
+library(dplyr)
 
 ui <- fluidPage(
+  tags$head(
+    tags$style(type="text/css"
+               , "label{ display: table-cell; text-align: center; vertical-align: middle; }
+                  .form-group { display: table-row;}
+                  #guess_input { width: 40px; margin-left: 10px; margin-bottom: 10px;}")
+  ),
   titlePanel("Customizable Hangman Game"),
   sidebarLayout(
     sidebarPanel(
       selectInput("theme", "Select Theme", c("Default", list.files("resources", pattern = ".zip"))),
       selectInput("wordlist", "Select Wordlist", c("Default", list.files("resources", pattern = "_wordlist.txt"))),
+      sliderInput('imagesize','Image Size',100,1000,step=1,value = 500),
       actionButton("start_game", "Start New Game")
     ),
     mainPanel(
@@ -21,11 +29,11 @@ ui <- fluidPage(
       textOutput("current_guess"),
       textOutput("current_word_state"),
       textOutput("game_status"),
-      textInput("guess_input", "Enter a letter guess:"),
-      actionButton("submit_guess", "Submit Guess"),
-      tags$br(),
-      tags$a('Image: Creative Commons Attribution-No Derivative Works 3.0 License',href='Creative Commons Attribution-No Derivative Works 3.0 License'),
-      tags$a('by tonkonton',href='https://www.deviantart.com/tonkonton/art/Bomb-Explosion-Gif-187668979')
+      textInput("guess_input", "Enter a letter guess: ",width = '40px'),
+      actionButton("submit_guess", "Submit Guess")
+      #tags$br(),
+      #tags$a('Image: Creative Commons Attribution-No Derivative Works 3.0 License',href='Creative Commons Attribution-No Derivative Works 3.0 License'),
+      #tags$a('by tonkonton',href='https://www.deviantart.com/tonkonton/art/Bomb-Explosion-Gif-187668979')
     )
   )
 )
@@ -53,7 +61,7 @@ server <- function(input, output, session) {
   load_hangman_images <- function() {
     theme_folder <- ifelse(game_data$theme == "Default", "default", game_data$theme)
     theme_folder_path <- paste("www/images/", theme_folder, sep = "")
-    images <- list.files(theme_folder_path, full.names = TRUE)
+    images <- list.files(theme_folder_path, full.names = TRUE) %>% grep('(svg|gif|png|jpg|jpeg)$',.,ignore.case=T,value = T)
     images <- sort(images)  # Sort images lexicographically
     return(gsub('www/','',images))
   }
@@ -83,7 +91,10 @@ server <- function(input, output, session) {
     user_guess <- stri_trans_tolower(input$guess_input)
 
     # Ensure the guess is a single letter
-    if (stri_length(user_guess) == 1 && grepl("^[a-z]$", user_guess)) {
+    if(stri_length(user_guess)!=1 || !grepl("^[a-z]$", user_guess)){
+      game_data$game_status <- "Invalid input. Try again.";
+    } else {
+      game_data$game_status <- "";
       if (grepl(user_guess, game_data$word_to_guess)) {
         # Correct guess: Update the current word state with the guessed letter
         word_state <- game_data$current_word_state
@@ -104,14 +115,12 @@ server <- function(input, output, session) {
         # Incorrect guess: Decrement the number of remaining hangman images
         game_data$hangman_images <- game_data$hangman_images[-1]
 
-        if (length(game_data$hangman_images) == 0) {
+        if (length(game_data$hangman_images) <= 1) {
           game_data$game_status <- "You lose!"
         }
       }
-    } else {
-      # Invalid guess; you can handle this by displaying an error message to the user.
-      # For simplicity, we won't display an error message here.
-    }
+    };
+    updateTextInput(inputId='guess_input',value='');
     message('end obs01')
   })
 
@@ -133,7 +142,7 @@ server <- function(input, output, session) {
   output$hangman_image <- renderUI({
     if (length(game_data$hangman_images) > 0) {
       img_path <- game_data$hangman_images[1]
-      tags$img(src = img_path, width = "200px")
+      tags$img(src = img_path, width = paste0(input$imagesize,'px'))
     } else {
       tags$p("Game over!")
     }
