@@ -19,7 +19,7 @@ ui <- fluidPage(
     sidebarPanel(
       selectInput("theme", "Select Theme", c("Default", list.files("resources", pattern = ".zip"))),
       selectInput("wordlist", "Select Wordlist", c("Default", list.files("resources", pattern = "_wordlist.txt"))),
-      sliderInput('imagesize','Image Size',100,1000,step=1,value = 500),
+      sliderInput('imagesize','Image Size',10,100,step=1,value = 80),
       actionButton("start_game", "Start New Game")
     ),
     mainPanel(
@@ -142,7 +142,7 @@ server <- function(input, output, session) {
   output$hangman_image <- renderUI({
     if (length(game_data$hangman_images) > 0) {
       img_path <- game_data$hangman_images[1]
-      tags$img(src = img_path, width = paste0(input$imagesize,'px'))
+      tags$img(src = img_path, width = paste0(input$imagesize,'%'))
     } else {
       tags$p("Game over!")
     }
