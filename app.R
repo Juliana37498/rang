@@ -6,21 +6,33 @@ library(stringdist)
 library(stringi)
 library(words)
 library(dplyr)
+#library(shinyjs)
+
+letter_decorator <- "<span class='%s'>%s</span>";
 
 ui <- fluidPage(
+  useShinyjs(),  # Initialize shinyjs
   tags$head(
     tags$style(type="text/css"
-               , "label{ display: table-cell; text-align: center; vertical-align: middle; }
-                  .form-group { display: table-row;}
-                  #guess_input { width: 40px; margin-left: 10px; margin-bottom: 10px;}")
+               , "
+               label{ display: table-cell; text-align: center; vertical-align: middle; }
+               .form-group { display: table-row;}
+               #guess_input { width: 40px; margin-left: 10px; margin-bottom: 10px;}
+               .selectize-input { width: 120% }
+               .rang_correct { font-size: 1.5em; color: green; font-weight: extra-bold;}
+               .rang_wrong { font-size: 1.5em; color: red; font-weight: extra-bold;}
+               ")
   ),
   titlePanel("Customizable Hangman Game"),
   sidebarLayout(
     sidebarPanel(
       selectInput("theme", "Select Theme", c("Default", list.files("resources", pattern = ".zip"))),
-      selectInput("wordlist", "Select Wordlist", c("Default", list.files("resources", pattern = "_wordlist.txt"))),
+      selectInput("wordlist", "Select Wordlist",
+                  list.files('resources',pattern='_wordlist.txt',ignore.case = T) %>%
+                    setNames(.,gsub('^[0-9]{2}_|_wordlist.txt','',.,ignore.case=T))),
       sliderInput('imagesize','Image Size',10,100,step=1,value = 80),
-      actionButton("start_game", "Start New Game")
+      actionButton("start_game", "Start New Game"),
+      if(file.exists('.debug')) actionButton('debug','Debug') else ''
     ),
     mainPanel(
       # Display hangman images and game status here
@@ -28,6 +40,7 @@ ui <- fluidPage(
       textOutput("word_to_guess"),
       textOutput("current_guess"),
       textOutput("current_word_state"),
+      uiOutput('letters_used'),
       textOutput("game_status"),
       textInput("guess_input", "Enter a letter guess: ",width = '40px'),
       actionButton("submit_guess", "Submit Guess")
@@ -39,6 +52,7 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
+  runjs('document.getElementById("guess_input").setAttribute("maxlength", "1");')
   # Define reactive values to store game-related information
   game_data <- reactiveValues(
     theme = NULL,
@@ -82,6 +96,8 @@ server <- function(input, output, session) {
     game_data$hangman_images <- load_hangman_images()
     game_data$game_status <- ""
     game_data$current_word_state <- initialize_word_state(game_data$word_to_guess)
+    game_data$correct_letters <- ''
+    game_data$wrong_letters <- ''
     message('end obs00')
   })
 
@@ -91,15 +107,17 @@ server <- function(input, output, session) {
     user_guess <- stri_trans_tolower(input$guess_input)
 
     # Ensure the guess is a single letter
-    if(stri_length(user_guess)!=1 || !grepl("^[a-z]$", user_guess)){
+    if(stri_length(user_guess)!=1 || !grepl("^[a-z]$", user_guess) ||
+       user_guess %in% c(game_data$correct_letters,game_data$wrong_letters)){
       game_data$game_status <- "Invalid input. Try again.";
     } else {
       game_data$game_status <- "";
       if (grepl(user_guess, game_data$word_to_guess)) {
         # Correct guess: Update the current word state with the guessed letter
+        game_data$correct_letters <- c(game_data$correct_letters,user_guess);
         word_state <- game_data$current_word_state
         word_to_guess <- game_data$word_to_guess
-        positions <- stri_locate_all_regex(word_to_guess, user_guess)[[1]]
+        positions <- stri_locate_all_fixed(word_to_guess, user_guess)[[1]]
         for (ii in seq_len(NROW(positions))) {
           #word_state <- substr_replace(word_state, user_guess, pos[1], pos[2])
           stri_sub(word_state, positions[ii,1], positions[ii,2]) <- user_guess
@@ -113,6 +131,7 @@ server <- function(input, output, session) {
         }
       } else {
         # Incorrect guess: Decrement the number of remaining hangman images
+        game_data$wrong_letters <- c(game_data$wrong_letters,user_guess);
         game_data$hangman_images <- game_data$hangman_images[-1]
 
         if (length(game_data$hangman_images) <= 1) {
@@ -124,8 +143,21 @@ server <- function(input, output, session) {
     message('end obs01')
   })
 
+  # Use shinyjs to add an event listener for the Enter key
+  # onevent("keyup", "guess_input", {
+  #   if (isolate(input$keyboard_key_code) == 13) {
+  #     browser()
+  #     click("submit_guess")
+  #   }
+  # })
+
+  output$letters_used <- renderUI(case_match(letters
+                                             ,game_data$correct_letters ~ sprintf(letter_decorator,'rang_correct',letters)
+                                             ,game_data$wrong_letters ~ sprintf(letter_decorator,'rang_wrong',letters)
+                                             ,.default = letters) %>% HTML );
+
   output$word_to_guess <- renderText({
-    game_data$word_to_guess
+    if(file.exists('.debug')) game_data$word_to_guess
   })
 
   output$current_word_state <- renderText({
@@ -147,6 +179,8 @@ server <- function(input, output, session) {
       tags$p("Game over!")
     }
   })
+
+  observe({req(input$debug); browser()});
 }
 
 shinyApp(ui, server)
