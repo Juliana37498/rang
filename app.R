@@ -6,53 +6,65 @@ library(stringdist)
 library(stringi)
 library(words)
 library(dplyr)
-#library(shinyjs)
+library(shinyjs)
+library(shinydashboard)
+library(shinyWidgets)
+
 
 letter_decorator <- "<span class='%s'>%s</span>";
 
 ui <- fluidPage(
-  useShinyjs(),  # Initialize shinyjs
+  useShinydashboard(), useShinyjs(),
   tags$head(
-    tags$style(type="text/css"
-               , "
-               label{ display: table-cell; text-align: center; vertical-align: middle; }
-               .form-group { display: table-row;}
-               #guess_input { width: 40px; margin-left: 10px; margin-bottom: 10px;}
-               .selectize-input { width: 120% }
-               .rang_correct { font-size: 1.5em; color: green; font-weight: extra-bold;}
-               .rang_wrong { font-size: 1.5em; color: red; font-weight: extra-bold;}
-               ")
+    tags$style(HTML("
+      .container-fluid {text-align: center;}
+      label{ display: table-cell; text-align: right; vertical-align: middle; padding-right: 0.5em;}
+      .form-group { display: table-row; margin-bottom: 15px; }
+      .shiny-input-container { margin-bottom: 10px; }
+      .rang_correct { font-size: 1.5em; color: green; font-weight: extra-bold;}
+      .rang_wrong { font-size: 1.5em; color: red; font-weight: extra-bold;}
+      .item {padding-right: 1.5em;}
+      #guess_input {width: 4em;}
+    "))
   ),
   titlePanel("Customizable Hangman Game"),
-  sidebarLayout(
-    sidebarPanel(
-      selectInput("theme", "Select Theme", c("Default", list.files("resources", pattern = ".zip"))),
-      selectInput("wordlist", "Select Wordlist",
-                  list.files('resources',pattern='_wordlist.txt',ignore.case = T) %>%
-                    setNames(.,gsub('^[0-9]{2}_|_wordlist.txt','',.,ignore.case=T))),
-      sliderInput('imagesize','Image Size',10,100,step=1,value = 80),
-      actionButton("start_game", "Start New Game"),
-      if(file.exists('.debug')) actionButton('debug','Debug') else ''
-    ),
-    mainPanel(
-      # Display hangman images and game status here
-      uiOutput("hangman_image"),
-      textOutput("word_to_guess"),
-      textOutput("current_guess"),
-      textOutput("current_word_state"),
-      uiOutput('letters_used'),
-      textOutput("game_status"),
-      textInput("guess_input", "Enter a letter guess: ",width = '40px'),
-      actionButton("submit_guess", "Submit Guess")
-      #tags$br(),
-      #tags$a('Image: Creative Commons Attribution-No Derivative Works 3.0 License',href='Creative Commons Attribution-No Derivative Works 3.0 License'),
-      #tags$a('by tonkonton',href='https://www.deviantart.com/tonkonton/art/Bomb-Explosion-Gif-187668979')
+
+  # Responsive layout starts here
+  fluidRow(
+    column(12,
+           box(title='Settings',width=NULL, collapsible = T, collapsed = F,id='rang_settings',
+             selectInput("theme", "Select Theme   ", c("Default", list.files("resources", pattern = ".zip"))),
+             selectInput("wordlist", "Select Wordlist   ",
+                         list.files('resources',pattern='_wordlist.txt',ignore.case = T) %>%
+                           setNames(.,gsub('^[0-9]{2}_|_wordlist.txt','',.,ignore.case=T))),
+             sliderInput('imagesize','Image Size',10,100,step=1,value = 55)
+           )
+    )
+  ),
+  fluidRow(
+    column(12,
+           actionButton("start_game", "Start New Game"),
+           if(file.exists('.debug')) actionButton('debug','Debug') else ''
+    )
+  ),
+  fluidRow(
+    column(12,
+           box(title='',width=NULL,collapsible=T,collapsed=T,id='rang_main',
+             uiOutput("hangman_image"),
+             textOutput("word_to_guess"),
+             textOutput("current_guess"),
+             textOutput("current_word_state"),
+             uiOutput('letters_used'),
+             textOutput("game_status"),
+             textInput("guess_input", "Enter a letter guess:   "),
+             actionButton("submit_guess", "Submit Guess"))
     )
   )
 )
 
 server <- function(input, output, session) {
   runjs('document.getElementById("guess_input").setAttribute("maxlength", "1");')
+
   # Define reactive values to store game-related information
   game_data <- reactiveValues(
     theme = NULL,
@@ -98,6 +110,19 @@ server <- function(input, output, session) {
     game_data$current_word_state <- initialize_word_state(game_data$word_to_guess)
     game_data$correct_letters <- ''
     game_data$wrong_letters <- ''
+    # The first time the game is run, un-collapse the main window-pane after the game is initialized
+    if(input$start_game==1){
+      runjs("$('#rang_main').parent().find('button.btn.btn-box-tool').click()");
+      runjs("
+        $('#guess_input').keyup(function(event) {
+          if(event.keyCode === 13) {
+            $('#submit_guess').click();
+          }
+        })"
+        );
+    };
+    # Everytime the game is run, collapse the settings collapse the settings window-pane
+    runjs("$('#rang_settings').parent('.box:not(.collapsed-box)').find('button.btn.btn-box-tool').click()");
     message('end obs00')
   })
 
@@ -174,7 +199,8 @@ server <- function(input, output, session) {
   output$hangman_image <- renderUI({
     if (length(game_data$hangman_images) > 0) {
       img_path <- game_data$hangman_images[1]
-      tags$img(src = img_path, width = paste0(input$imagesize,'%'))
+      tags$img(src = img_path, style=paste0('height: ',input$imagesize,'vh;'))
+               #height = paste0(input$imagesize,'%'))
     } else {
       tags$p("Game over!")
     }
@@ -184,3 +210,4 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
